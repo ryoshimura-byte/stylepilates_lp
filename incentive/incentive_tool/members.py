@@ -183,7 +183,47 @@ def _sub_end(s: dict) -> date | None:
     return _d(s.get("canceled_date"))
 
 
-def build_memberships(data: dict, assignments: Assignments, cfg) -> BuildResult:
+@dataclass
+class Override:
+    """Square 以外（Airペイ・現金など）での支払い実績の補正。"""
+    joined: date | None      # 実際の入会日
+    extra_payments: int      # Square 以外で決済した回数
+    note: str = ""
+
+
+def load_overrides(path) -> dict[str, Override]:
+    """data/member_overrides.csv（列：会員名 or 顧客ID, 実際の入会日, Square外の決済回数, 備考）。"""
+    import csv
+
+    from .names import normalize
+    out: dict[str, Override] = {}
+    if not path or not path.exists():
+        return out
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        for r in csv.DictReader(f):
+            r = {(k or "").strip(): (v or "").strip() for k, v in r.items()}
+            key = r.get("顧客ID") or normalize(r.get("会員名"))
+            if not key:
+                continue
+            joined = _d(r.get("実際の入会日").replace("/", "-")) if r.get("実際の入会日") else None
+            out[key] = Override(joined, int(r.get("Square外の決済回数") or 0), r.get("備考", ""))
+    return out
+
+
+def _apply_override(m: "Membership", ov: Override) -> None:
+    if ov.joined and ov.joined < m.start_date:
+        m.start_date = ov.joined
+    # Square 外の決済は、Square の初回決済より前に毎月1回ずつ行われたものとして扱う
+    first_square = min(m.paid_dates(), default=m.start_date)
+    for i in range(ov.extra_payments):
+        d = first_square - timedelta(days=1 + 30 * i)
+        m.invoices.append(Invoice(f"external:{i + 1}", "PAID", d, d))
+    if m.paid_dates():
+        m.start_date = min(m.start_date, m.paid_dates()[0])
+
+
+def build_memberships(data: dict, assignments: Assignments, cfg,
+                      overrides: dict[str, Override] | None = None) -> BuildResult:
     tz = ZoneInfo(cfg.timezone)
     warnings: list[str] = []
     customers = {c["id"]: c for c in data.get("customers", [])}
@@ -255,6 +295,11 @@ def build_memberships(data: dict, assignments: Assignments, cfg) -> BuildResult:
             m.anchor_day = int(first.get("monthly_billing_anchor_date") or m.start_date.day)
             for s in g:
                 m.invoices.extend(invoices_by_sub.get(s["id"], []))
+            if overrides and gi == 0:
+                from .names import normalize
+                ov = next((overrides[k] for k in [*m.customer_ids, normalize(m.name)] if k in overrides), None)
+                if ov:
+                    _apply_override(m, ov)
             statuses = [s.get("status") for s in g]
             ends = [_sub_end(s) for s in g]
             for st in ("ACTIVE", "PAUSED", "DEACTIVATED", "PENDING", "CANCELED"):

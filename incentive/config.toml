@@ -34,6 +34,7 @@ exclude_customer_ids = []           # テスト用顧客など、集計から除
 [files]
 assignments = "data/assignments.csv"     # 担当表（列：担当社員, 会員名[, 顧客ID]）
 name_aliases = "data/name_aliases.csv"   # 表記ゆれ対応表（列：Square上の名前, 担当表の会員名）
+member_overrides = "data/member_overrides.csv"  # Square外（Airペイ等）の支払い補正（列：会員名, 実際の入会日, Square外の決済回数, 備考）
 state_db = "state/incentive.db"          # 確定値・ログを保存するDB
 output_dir = "output"                    # CSV の出力先
 

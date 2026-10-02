@@ -24,7 +24,7 @@ from zoneinfo import ZoneInfo
 
 from .aggregate import compute_month
 from .config import load_config
-from .members import add_months, build_memberships, month_of, month_range
+from .members import add_months, build_memberships, load_overrides, month_of, month_range
 from .names import load_assignments
 from .outputs import build_tables, write_csv, write_sheets
 from .square_client import SquareClient, fetch_all, load_dump, save_dump
@@ -91,7 +91,8 @@ def cmd_run(args) -> int:
                  counts["subscriptions"], counts["invoices"], counts["customers"])
 
         assignments = load_assignments(cfg.path("assignments"), cfg.path("name_aliases"), cfg.employees)
-        built = build_memberships(data, assignments, cfg)
+        overrides = load_overrides(cfg.path("member_overrides")) if "member_overrides" in cfg.raw["files"] else {}
+        built = build_memberships(data, assignments, cfg, overrides)
         for msg in built.unmatched:
             log.warning(msg + " → 未割当として集計")
 

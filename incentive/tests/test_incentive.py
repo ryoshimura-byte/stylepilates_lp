@@ -187,6 +187,17 @@ class LogicTests(unittest.TestCase):
         nov = compute_month(ms, "2026-11", self.cfg, date(2026, 12, 1))
         self.assertEqual(row(nov, "AMI").continued, 1)
 
+    def test_override_for_payments_outside_square(self):
+        from incentive_tool.members import Override
+        cid = self.assign("MIZUKI", "長期", "会員")
+        # Square では6月開始・3回決済で10月解約だが、それ以前にAirペイで8回払っている
+        self.f.sub(cid, "2026-06-16", status="CANCELED", canceled="2026-10-16",
+                   paid=monthly_paid("2026-06-16", 3))
+        b = build_memberships(self.f.data(), Assignments(self.rows, loaded=True), self.cfg,
+                              {normalize("長期 会員"): Override(date(2025, 10, 16), 8)})
+        r = compute_month(b.memberships, "2026-10", self.cfg, date(2026, 10, 20))
+        self.assertEqual((row(r, "MIZUKI").targets, row(r, "MIZUKI").withdrawn), (0, 0))
+
     def test_current_month_is_provisional(self):
         c1 = self.assign("CHINA", "途中", "一")
         c2 = self.assign("CHINA", "途中", "二")

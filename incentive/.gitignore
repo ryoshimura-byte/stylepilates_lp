@@ -7,3 +7,4 @@ data/name_aliases.csv
 __pycache__/
 *.pyc
 .pytest_cache/
+data/member_overrides.csv
