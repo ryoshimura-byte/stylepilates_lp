@@ -101,8 +101,11 @@ def compute_month(memberships: list[Membership], month: str, cfg, as_of: date) -
     lookback_start = add_months(month, -cfg.pending_lookback_months)
 
     for m in memberships:
-        # 担当人数：当月は実行時点のステータス、確定月は月末時点
-        live = m.is_live_on(cutoff) if finalized else m.is_live_now()
+        # 担当人数：当月は実行時点のステータス（ただし当月中に退会予定の会員は除く）、確定月は月末時点
+        if finalized:
+            live = m.is_live_on(cutoff)
+        else:
+            live = m.is_live_now() and not (m.end_date and m.end_date <= cutoff)
         if live:
             bucket(m.employee)["headcount"] += 1
 

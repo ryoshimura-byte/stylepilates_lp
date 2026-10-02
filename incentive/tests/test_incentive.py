@@ -218,6 +218,12 @@ class LogicTests(unittest.TestCase):
         self.assertFalse(r.finalized)
         self.assertEqual((c.targets, c.continued, c.undecided), (2, 1, 1))
         self.assertEqual(c.judgement, "達成（途中経過）")
+        self.assertEqual(c.headcount, 2)
+        # 当月中に退会予定の会員は、途中経過の担当人数に含めない
+        c3 = self.assign("CHINA", "途中", "三")
+        self.f.sub(c3, "2026-01-15", canceled="2026-10-15", paid=monthly_paid("2026-01-15", 9))
+        r = compute_month(self.build().memberships, "2026-10", self.cfg, date(2026, 10, 2))
+        self.assertEqual(row(r, "CHINA").headcount, 2)
 
     def test_unassigned_customer(self):
         cid = self.f.customer("担当", "なし")
