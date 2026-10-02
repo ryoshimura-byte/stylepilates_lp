@@ -91,6 +91,10 @@ def cmd_run(args) -> int:
                  counts["subscriptions"], counts["invoices"], counts["customers"])
 
         assignments = load_assignments(cfg.path("assignments"), cfg.path("name_aliases"), cfg.employees)
+        excluded = cfg.path("excluded_customers") if "excluded_customers" in cfg.raw["files"] else None
+        if excluded and excluded.exists():
+            with excluded.open(encoding="utf-8-sig", newline="") as f:
+                cfg.exclude_customer_ids |= {r["顧客ID"].strip() for r in csv.DictReader(f) if r.get("顧客ID")}
         overrides = load_overrides(cfg.path("member_overrides")) if "member_overrides" in cfg.raw["files"] else {}
         built = build_memberships(data, assignments, cfg, overrides)
         for msg in built.unmatched:

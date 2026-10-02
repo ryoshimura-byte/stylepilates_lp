@@ -8,3 +8,4 @@ __pycache__/
 *.pyc
 .pytest_cache/
 data/member_overrides.csv
+data/excluded_customers.csv
