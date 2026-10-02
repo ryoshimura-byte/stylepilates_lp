@@ -189,10 +189,11 @@ class Override:
     joined: date | None      # 実際の入会日
     extra_payments: int      # Square 以外で決済した回数
     note: str = ""
+    keep_member: bool = False  # Square 上は解約でも退会扱いしない（登録し直し予定など）
 
 
 def load_overrides(path) -> dict[str, Override]:
-    """data/member_overrides.csv（列：会員名 or 顧客ID, 実際の入会日, Square外の決済回数, 備考）。"""
+    """data/member_overrides.csv（列：会員名 or 顧客ID, 実際の入会日, Square外の決済回数, 退会扱いしない, 備考）。"""
     import csv
 
     from .names import normalize
@@ -206,7 +207,8 @@ def load_overrides(path) -> dict[str, Override]:
             if not key:
                 continue
             joined = _d(r.get("実際の入会日").replace("/", "-")) if r.get("実際の入会日") else None
-            out[key] = Override(joined, int(r.get("Square外の決済回数") or 0), r.get("備考", ""))
+            keep = r.get("退会扱いしない", "").lower() in ("1", "true", "yes", "○", "◯", "はい")
+            out[key] = Override(joined, int(r.get("Square外の決済回数") or 0), r.get("備考", ""), keep)
     return out
 
 
@@ -220,6 +222,8 @@ def _apply_override(m: "Membership", ov: Override) -> None:
         m.invoices.append(Invoice(f"external:{i + 1}", "PAID", d, d))
     if m.paid_dates():
         m.start_date = min(m.start_date, m.paid_dates()[0])
+    if ov.keep_member:
+        m.end_date = None
 
 
 def build_memberships(data: dict, assignments: Assignments, cfg,
@@ -257,7 +261,8 @@ def build_memberships(data: dict, assignments: Assignments, cfg,
             key, name, emp = f"A:{a.employee}:{a.key}", a.member_name, a.employee
         else:
             key, name, emp = f"C:{cid}", customer_display_name(cust) or cid, UNASSIGNED
-            if assignments.loaded and cid not in unmatched:
+            # 過去に退会済みの会員まで警告すると埋もれるので、契約が残っている会員だけ警告する
+            if assignments.loaded and cid not in unmatched and s.get("status") != "CANCELED":
                 unmatched[cid] = f"担当表にない会員: {name}（顧客ID {cid}）{(' ' + how) if how else ''}"
         p = persons.setdefault(key, {"name": name, "employee": emp, "customer_ids": set(), "subs": []})
         p["customer_ids"].add(cid)
@@ -295,11 +300,6 @@ def build_memberships(data: dict, assignments: Assignments, cfg,
             m.anchor_day = int(first.get("monthly_billing_anchor_date") or m.start_date.day)
             for s in g:
                 m.invoices.extend(invoices_by_sub.get(s["id"], []))
-            if overrides and gi == 0:
-                from .names import normalize
-                ov = next((overrides[k] for k in [*m.customer_ids, normalize(m.name)] if k in overrides), None)
-                if ov:
-                    _apply_override(m, ov)
             statuses = [s.get("status") for s in g]
             ends = [_sub_end(s) for s in g]
             for st in ("ACTIVE", "PAUSED", "DEACTIVATED", "PENDING", "CANCELED"):
@@ -313,6 +313,11 @@ def build_memberships(data: dict, assignments: Assignments, cfg,
                 m.end_date = None  # 決済エラーで停止。退会ではなく保留扱い
             else:
                 m.end_date = max(e for e in ends if e)
+            if overrides and gi == 0:
+                from .names import normalize
+                ov = next((overrides[k] for k in [*m.customer_ids, normalize(m.name)] if k in overrides), None)
+                if ov:
+                    _apply_override(m, ov)
             if m.end_date is not None and not m.paid_dates() and m.status == "CANCELED":
                 # 一度も決済されずに終了した契約（申込みの取り消し・重複登録など）は会員として数えない
                 skipped_never_paid += 1

@@ -114,6 +114,7 @@ python -m incentive_tool run         # 1回実行 → output/ にCSVが出ます
 - 決済エラーは、期日を過ぎて UNPAID / FAILED / PARTIALLY_PAID のままの invoice で判定します（`config.toml` で変更可）
 - 保留一覧には、4回目の予定月から `pending_lookback_months`（12ヶ月）以内の会員を表示します
 - Square 以外（Airペイ・現金など）で支払っていた期間がある会員は、`data/member_overrides.csv`
-  （列：会員名, 顧客ID, 実際の入会日, Square外の決済回数, 備考）に書くと、その回数を決済回数に足して判定します
+  （列：会員名, 顧客ID, 実際の入会日, Square外の決済回数, 退会扱いしない, 備考）に書くと、その回数を決済回数に足して判定します。
+  Square 上は解約になっていても登録し直す予定の会員は「退会扱いしない」に 1 を入れると、退会ではなく未確定・保留として扱います
   （例：`data/member_overrides.example.csv`）
 - テスト用の顧客などは `[tracking] exclude_customer_ids` に顧客IDを入れると集計から外せます

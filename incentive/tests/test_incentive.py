@@ -198,6 +198,16 @@ class LogicTests(unittest.TestCase):
         r = compute_month(b.memberships, "2026-10", self.cfg, date(2026, 10, 20))
         self.assertEqual((row(r, "MIZUKI").targets, row(r, "MIZUKI").withdrawn), (0, 0))
 
+    def test_override_keep_member(self):
+        from incentive_tool.members import Override
+        cid = self.assign("CHINA", "再登録", "予定")
+        self.f.sub(cid, "2026-07-04", status="CANCELED", canceled="2026-10-04",
+                   paid=monthly_paid("2026-07-04", 3))
+        b = build_memberships(self.f.data(), Assignments(self.rows, loaded=True), self.cfg,
+                              {normalize("再登録 予定"): Override(None, 0, keep_member=True)})
+        c = row(compute_month(b.memberships, "2026-10", self.cfg, date(2026, 10, 10)), "CHINA")
+        self.assertEqual((c.targets, c.withdrawn, c.undecided), (1, 0, 1))
+
     def test_current_month_is_provisional(self):
         c1 = self.assign("CHINA", "途中", "一")
         c2 = self.assign("CHINA", "途中", "二")
