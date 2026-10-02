@@ -1,0 +1,4 @@
+# Square API 取得・集計・CSV出力は標準ライブラリのみで動作します（Python 3.11 以上）。
+# Googleスプレッドシートに書き込む場合のみ以下が必要です。
+gspread>=6.0
+google-auth>=2.0

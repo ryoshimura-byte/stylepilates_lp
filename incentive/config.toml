@@ -1,0 +1,46 @@
+# 担当顧客インセンティブ集計ツールの設定ファイル
+# アクセストークンなどの秘密情報はここに書かず、環境変数か .env に書いてください。
+
+[square]
+environment = "production"          # "production" / "sandbox"
+api_version = "2025-01-23"          # Square-Version ヘッダー
+location_ids = []                   # 空なら全店舗を自動取得
+request_interval_sec = 0.25         # リクエスト間隔（レート制限対策）
+max_retries = 5                     # 429/5xx/通信エラー時の再試行回数
+
+[rules]
+pass_line = 0.25                    # 合格ライン（退会率がこれ以下なら「達成」）
+min_headcount = 20                  # ポイント付与に必要な最低担当人数
+points_divisor = 10                 # ポイント ＝ 担当人数 ÷ この値
+continuation_payments = 4           # 「継続」とみなす決済完了回数
+paid_statuses = ["PAID", "PARTIALLY_REFUNDED"]       # 決済完了として数える invoice の状態
+error_statuses = ["UNPAID", "FAILED", "PARTIALLY_PAID"]  # 期日を過ぎてこの状態なら「決済エラー」
+rejoin_gap_days = 31                # 前の契約終了からこの日数以内の新契約はプラン変更（通算）とみなす
+pending_lookback_months = 12        # これより古い保留は一覧から外す（ログには出す）
+zero_target_is_achieved = true      # 判定対象0人の月を「達成」扱いにするか
+
+[payout]
+total_amount = 300000               # 配る総額（円）
+
+[employees]
+names = ["CHINA", "TOMOKA", "AMI", "MIZUKI", "RIHO"]
+not_eligible = ["RIHO"]             # 集計には出すが支給額の計算から除外する社員（役員など）
+
+[tracking]
+start_month = "2026-10"             # この月以降を日次実行で自動集計・確定する
+exclude_customer_ids = []           # テスト用顧客など、集計から除外する Square 顧客ID
+
+[files]
+assignments = "data/assignments.csv"     # 担当表（列：担当社員, 会員名[, 顧客ID]）
+name_aliases = "data/name_aliases.csv"   # 表記ゆれ対応表（列：Square上の名前, 担当表の会員名）
+state_db = "state/incentive.db"          # 確定値・ログを保存するDB
+output_dir = "output"                    # CSV の出力先
+
+[output]
+mode = "csv"                        # "csv" / "sheets" / "both"
+spreadsheet_id = ""                 # Googleスプレッドシートのキー（URLの /d/ と /edit の間）
+# サービスアカウントの鍵ファイルは環境変数 GOOGLE_SERVICE_ACCOUNT_FILE で指定
+
+[schedule]
+time = "06:00"                      # 毎日の実行時刻（日本時間）
+timezone = "Asia/Tokyo"

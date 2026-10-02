@@ -1,0 +1,9 @@
+.env
+state/
+output/
+dumps/
+data/assignments.csv
+data/name_aliases.csv
+__pycache__/
+*.pyc
+.pytest_cache/
