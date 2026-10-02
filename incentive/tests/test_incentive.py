@@ -173,6 +173,20 @@ class LogicTests(unittest.TestCase):
         m = row(r, "MIZUKI")
         self.assertEqual((m.targets, m.continued, m.withdrawn, m.headcount), (1, 1, 0, 1))
 
+    def test_resume_after_long_gap_is_pause(self):
+        cid = self.assign("AMI", "休会明け", "花子")
+        # 6/10・7/10 決済 → 8/10 で一旦解約（2ヶ月休み）→ 10/10 再開
+        self.f.sub(cid, "2026-06-10", status="CANCELED", canceled="2026-08-10",
+                   paid=monthly_paid("2026-06-10", 2))
+        self.f.sub(cid, "2026-10-10", paid=monthly_paid("2026-10-10", 2))
+        ms = self.build().memberships
+        self.assertEqual(len(ms), 1)
+        sep = compute_month(ms, "2026-09", self.cfg, date(2026, 12, 1))
+        a = row(sep, "AMI")
+        self.assertEqual((a.headcount, a.targets, a.withdrawn, a.pending), (1, 0, 0, 1))
+        nov = compute_month(ms, "2026-11", self.cfg, date(2026, 12, 1))
+        self.assertEqual(row(nov, "AMI").continued, 1)
+
     def test_current_month_is_provisional(self):
         c1 = self.assign("CHINA", "途中", "一")
         c2 = self.assign("CHINA", "途中", "二")

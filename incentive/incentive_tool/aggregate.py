@@ -69,7 +69,7 @@ def judgement_month(m: Membership, cfg, as_of: date) -> tuple[str, str | None, d
 def _pending_reason(m: Membership, cfg, as_of: date) -> tuple[str, date | None]:
     errs = m.error_invoices(as_of, cfg.error_statuses)
     last_err = max((i.due_date for i in errs), default=None)
-    if m.status == "PAUSED":
+    if m.status == "PAUSED" or m.on_break:
         return "休会中", last_err
     if m.status == "DEACTIVATED":
         return "決済エラー（契約停止）", last_err

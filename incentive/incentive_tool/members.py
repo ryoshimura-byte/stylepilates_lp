@@ -1,7 +1,9 @@
 """Square のサブスクリプション・請求書を「会員の在籍期間（メンバーシップ）」に組み立てる。
 
 - 同じ会員（担当表の同一行、または同一の顧客ID）のサブスクリプションを開始日順に並べ、
-  前の契約の終了から rejoin_gap_days 以内に始まった契約はプラン変更とみなして1つに通算する。
+  前の契約の終了から plan_change_gap_days 以内に始まった契約はプラン変更とみなして1つに通算する。
+- それより空けて再開した契約は「休会明け」とみなして同じ在籍に通算する（rejoin_as_pause = true のとき）。
+  契約と契約の間の空白期間は休会中（PAUSED と同じ扱い）。
 - 決済回数は、通算したすべてのサブスクリプションの invoice のうち支払い済みのものを数える。
 """
 from __future__ import annotations
@@ -143,10 +145,28 @@ class Membership:
                 end = _d(s.get("canceled_date"))
             if end is None or end > d:
                 return True
-        return False
+        return self.in_pause_gap(d)
 
-    def is_live_now(self) -> bool:
-        return any(s.get("status") in LIVE_STATUSES for s in self.subscriptions)
+    def in_pause_gap(self, d: date) -> bool:
+        """d が契約と契約の間の空白期間（休会中）にあたるか。"""
+        started = any(_d(s.get("start_date")) <= d for s in self.subscriptions if s.get("start_date"))
+        resumes = any(
+            _d(s.get("start_date")) > d and not (
+                s.get("status") == "CANCELED" and s.get("canceled_date", "")[:10] <= s["start_date"][:10])
+            for s in self.subscriptions if s.get("start_date"))
+        return started and resumes
+
+    def is_live_now(self, today: date | None = None) -> bool:
+        if any(s.get("status") in LIVE_STATUSES for s in self.subscriptions):
+            return True
+        # 休会明けの契約が開始待ち（PENDING）で、すでに決済実績がある → 休会中
+        return any(s.get("status") == "PENDING" for s in self.subscriptions) and bool(self.paid_dates())
+
+    @property
+    def on_break(self) -> bool:
+        """現在、契約の空白期間（休会）中か。"""
+        return (not any(s.get("status") in LIVE_STATUSES for s in self.subscriptions)
+                and self.is_live_now())
 
 
 # -------------------------------------------------------------------- builder
@@ -204,7 +224,7 @@ def build_memberships(data: dict, assignments: Assignments, cfg) -> BuildResult:
         p["subs"].append(s)
 
     memberships: list[Membership] = []
-    gap = timedelta(days=cfg.rejoin_gap_days)
+    gap = timedelta(days=cfg.plan_change_gap_days)
     skipped_never_paid = 0
     for key, p in persons.items():
         subs = sorted(p["subs"], key=lambda s: (s.get("start_date") or "", s.get("created_at") or ""))
@@ -213,7 +233,8 @@ def build_memberships(data: dict, assignments: Assignments, cfg) -> BuildResult:
         open_ended = False
         for s in subs:
             start = _d(s.get("start_date"))
-            if groups and (open_ended or (group_end and start and start <= group_end + gap)):
+            if groups and (open_ended or cfg.rejoin_as_pause
+                           or (group_end and start and start <= group_end + gap)):
                 groups[-1].append(s)
             else:
                 groups.append([s])

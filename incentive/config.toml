@@ -15,7 +15,8 @@ points_divisor = 10                 # ポイント ＝ 担当人数 ÷ この値
 continuation_payments = 4           # 「継続」とみなす決済完了回数
 paid_statuses = ["PAID", "PARTIALLY_REFUNDED"]       # 決済完了として数える invoice の状態
 error_statuses = ["UNPAID", "FAILED", "PARTIALLY_PAID"]  # 期日を過ぎてこの状態なら「決済エラー」
-rejoin_gap_days = 31                # 前の契約終了からこの日数以内の新契約はプラン変更（通算）とみなす
+plan_change_gap_days = 31           # 前の契約終了からこの日数以内の新契約はプラン変更（通算・休会なし）とみなす
+rejoin_as_pause = true              # それより空けて再開した場合も「休会明け」として同じ在籍で通算する（false なら新規入会扱い）
 pending_lookback_months = 12        # これより古い保留は一覧から外す（ログには出す）
 zero_target_is_achieved = true      # 判定対象0人の月を「達成」扱いにするか
 
