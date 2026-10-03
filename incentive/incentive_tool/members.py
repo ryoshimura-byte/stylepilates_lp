@@ -255,6 +255,10 @@ def build_memberships(data: dict, assignments: Assignments, cfg,
     persons: dict[str, dict] = {}
     unmatched: dict[str, str] = {}
     for s in data.get("subscriptions", []):
+        # 開始日と同じ日（以前）に解約された契約は始まっていない（休会明けの予約の取り消しなど）ので無視する
+        if (s.get("canceled_date") and s.get("start_date") and s["canceled_date"][:10] <= s["start_date"][:10]
+                and not any(i.paid_date for i in invoices_by_sub.get(s["id"], []))):
+            continue
         cid = s.get("customer_id")
         if not cid or cid in cfg.exclude_customer_ids:
             continue

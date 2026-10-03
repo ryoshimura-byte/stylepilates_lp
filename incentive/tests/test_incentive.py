@@ -216,6 +216,16 @@ class LogicTests(unittest.TestCase):
         c = row(compute_month(b.memberships, "2026-10", self.cfg, date(2026, 10, 10)), "CHINA")
         self.assertEqual((c.targets, c.withdrawn, c.undecided), (1, 0, 1))
 
+    def test_resume_booking_canceled_on_start_is_not_a_pause(self):
+        cid = self.assign("MIZUKI", "退会", "済み")
+        self.f.sub(cid, "2026-01-28", status="CANCELED", canceled="2026-04-28",
+                   paid=monthly_paid("2026-01-28", 3))
+        # 再開予定の契約が開始日と同日に取り消されている → 再開しない
+        self.f.sub(cid, "2027-01-28", status="PENDING", canceled="2027-01-28")
+        ms = self.build().memberships
+        self.assertFalse(ms[0].is_live_now())
+        self.assertEqual(row(compute_month(ms, "2026-10", self.cfg, date(2026, 10, 3)), "MIZUKI").headcount, 0)
+
     def test_current_month_is_provisional(self):
         c1 = self.assign("CHINA", "途中", "一")
         c2 = self.assign("CHINA", "途中", "二")
