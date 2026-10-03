@@ -190,10 +190,11 @@ class Override:
     extra_payments: int      # Square 以外で決済した回数
     note: str = ""
     keep_member: bool = False  # Square 上は解約でも退会扱いしない（登録し直し予定など）
+    external_active: bool = False  # Square にサブスクがなく、Airペイなど Square 外で在籍中
 
 
 def load_overrides(path) -> dict[str, Override]:
-    """data/member_overrides.csv（列：会員名 or 顧客ID, 実際の入会日, Square外の決済回数, 退会扱いしない, 備考）。"""
+    """data/member_overrides.csv（列：会員名 or 顧客ID, 実際の入会日, Square外の決済回数, 退会扱いしない, Square外で在籍中, 備考）。"""
     import csv
 
     from .names import normalize
@@ -207,8 +208,10 @@ def load_overrides(path) -> dict[str, Override]:
             if not key:
                 continue
             joined = _d(r.get("実際の入会日").replace("/", "-")) if r.get("実際の入会日") else None
-            keep = r.get("退会扱いしない", "").lower() in ("1", "true", "yes", "○", "◯", "はい")
-            out[key] = Override(joined, int(r.get("Square外の決済回数") or 0), r.get("備考", ""), keep)
+            yes = ("1", "true", "yes", "○", "◯", "はい")
+            keep = r.get("退会扱いしない", "").lower() in yes
+            external = r.get("Square外で在籍中", "").lower() in yes
+            out[key] = Override(joined, int(r.get("Square外の決済回数") or 0), r.get("備考", ""), keep, external)
     return out
 
 
@@ -323,6 +326,21 @@ def build_memberships(data: dict, assignments: Assignments, cfg,
                 skipped_never_paid += 1
                 continue
             memberships.append(m)
+    # Square にサブスクがなく Square 外（Airペイなど）で在籍中の会員を、担当表の名前で追加する
+    for key, ov in (overrides or {}).items():
+        a = assignments.by_key.get(key)
+        if not ov.external_active or not a or any(
+                m.person_key.split("#")[0] == f"A:{a.employee}:{a.key}" for m in memberships):
+            continue
+        start = ov.joined or date.today()
+        m = Membership(person_key=f"A:{a.employee}:{a.key}", name=a.member_name, employee=a.employee,
+                       customer_ids=[], subscriptions=[{"id": f"external:{key}", "status": "ACTIVE",
+                                                        "start_date": start.isoformat()}],
+                       start_date=start, anchor_day=start.day, status="ACTIVE")
+        for i in range(ov.extra_payments):
+            d = m.billing_date(i + 1)
+            m.invoices.append(Invoice(f"external:{key}:{i + 1}", "PAID", d, d))
+        memberships.append(m)
     if skipped_never_paid:
         log.info("一度も決済されずに終了した契約 %d 件を集計から除外しました", skipped_never_paid)
     return BuildResult(memberships, warnings, list(unmatched.values()))

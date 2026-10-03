@@ -198,6 +198,14 @@ class LogicTests(unittest.TestCase):
         r = compute_month(b.memberships, "2026-10", self.cfg, date(2026, 10, 20))
         self.assertEqual((row(r, "MIZUKI").targets, row(r, "MIZUKI").withdrawn), (0, 0))
 
+    def test_override_external_member_counts_in_headcount(self):
+        from incentive_tool.members import Override
+        self.rows.append(Assignment("MIZUKI", "外部 払い"))
+        b = build_memberships(self.f.data(), Assignments(self.rows, loaded=True), self.cfg,
+                              {normalize("外部 払い"): Override(date(2025, 8, 21), 14, external_active=True)})
+        r = compute_month(b.memberships, "2026-10", self.cfg, date(2026, 10, 3))
+        self.assertEqual((row(r, "MIZUKI").headcount, row(r, "MIZUKI").targets), (1, 0))
+
     def test_override_keep_member(self):
         from incentive_tool.members import Override
         cid = self.assign("CHINA", "再登録", "予定")
