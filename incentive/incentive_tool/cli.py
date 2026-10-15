@@ -24,7 +24,8 @@ from zoneinfo import ZoneInfo
 
 from .aggregate import compute_month
 from .config import load_config
-from .members import add_months, build_memberships, load_overrides, month_of, month_range
+from .members import (add_months, apply_planned_cancellations, build_memberships, load_overrides,
+                      load_planned_cancellations, month_of, month_range)
 from .names import load_assignments
 from .outputs import build_tables, write_csv, write_sheets
 from .square_client import SquareClient, fetch_all, load_dump, save_dump
@@ -101,6 +102,15 @@ def cmd_run(args) -> int:
                 cfg.exclude_customer_ids |= {r["顧客ID"].strip() for r in csv.DictReader(f) if r.get("顧客ID")}
         overrides = load_overrides(cfg.path("member_overrides")) if "member_overrides" in cfg.raw["files"] else {}
         built = build_memberships(data, assignments, cfg, overrides)
+        if "planned_cancellations" in cfg.raw["files"]:
+            planned = load_planned_cancellations(cfg.path("planned_cancellations"))
+            missing = apply_planned_cancellations(built.memberships, planned, as_of, assignments.aliases)
+            if planned:
+                log.info("退会予定（退会届）%d 件を照合しました", len(planned) - len(missing))
+            for key in missing:
+                if planned[key] >= as_of.replace(day=1):
+                    log.warning("退会届の名前が担当表・Squareと照合できません: %s（退会希望日 %s）"
+                                " → 補正が必要なら担当表の表記に合わせてください", key, planned[key])
         for msg in built.unmatched:
             log.warning(msg + " → 未割当として集計")
 
@@ -162,7 +172,8 @@ def _write_details(cfg, result) -> None:
     d.mkdir(parents=True, exist_ok=True)
     with (d / f"{result.month}.csv").open("w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["月", "担当社員", "会員名", "4回目の決済予定月", "判定", "判定日"])
+        basis = "入会月" if cfg.judgement_basis == "cohort" else "4回目の決済予定月"
+        w.writerow(["月", "担当社員", "会員名", basis, "判定", "判定日"])
         for x in sorted(result.details, key=lambda x: (x["employee"], x["name"])):
             w.writerow([x["month"], x["employee"], x["name"], x["scheduled"], x["result"], x["date"]])
         for p in result.pending:

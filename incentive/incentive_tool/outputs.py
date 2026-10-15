@@ -41,6 +41,9 @@ def build_tables(store, cfg, updated_at: str) -> dict[str, list[list]]:
         ["合格ライン（退会率）", _pct(cfg.pass_line), "この値以下なら達成"],
         ["最低担当人数", cfg.min_headcount, "達成かつこの人数以上でポイント付与"],
         ["ポイント計算", f"担当人数 ÷ {_num(cfg.points_divisor)}", ""],
+        ["退会率の数え方", "入会月で区切る" if cfg.judgement_basis == "cohort" else "4回目の決済予定月",
+         "判定月の3ヶ月前に入会した人のうち、4回目の決済前に退会した人の割合（2026年10月は4回目の決済予定月で確定済み）"
+         if cfg.judgement_basis == "cohort" else ""],
         ["配る総額", cfg.total_amount, "円（config.toml の [payout] total_amount で変更）"],
         ["支給対象外", "、".join(sorted(cfg.not_eligible)) or "なし", "集計表には表示、支給額の計算からは除外"],
         ["最終更新日時", updated_at, ""],
@@ -56,7 +59,7 @@ def build_tables(store, cfg, updated_at: str) -> dict[str, list[list]]:
                       _pct(h.expected_ratio) if h.eligible else "対象外",
                       h.expected_amount if h.eligible else "対象外"])
 
-    t_pend = [["対象月（4回目の決済予定月）", "担当社員", "会員名", "理由", "決済完了回数", "最終エラー日", "Square顧客ID"]]
+    t_pend = [["判定月" if cfg.judgement_basis == "cohort" else "対象月（4回目の決済予定月）", "担当社員", "会員名", "理由", "決済完了回数", "最終エラー日", "Square顧客ID"]]
     for p in store.pending_records():
         t_pend.append([p["month"], p["employee"], p["name"], p["reason"], p["paid_count"],
                        p["last_error_date"], p["customer_ids"]])

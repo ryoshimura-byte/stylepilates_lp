@@ -78,6 +78,41 @@ def _pending_reason(m: Membership, cfg, as_of: date) -> tuple[str, date | None]:
     return "決済未完了", last_err
 
 
+def cohort_month(month: str, cfg) -> str:
+    """判定月 month の対象になる入会月（4回目の決済が month に来る入会月＝3ヶ月前）。"""
+    return add_months(month, -(cfg.continuation_payments - 1))
+
+
+def _cohort_member(m: Membership, month: str, cfg, as_of: date, b: dict,
+                   pending: list, details: list) -> None:
+    """入会月で区切る判定：month の3ヶ月前に入会した人のうち、4回目の決済前に退会した人を数える。"""
+    joined = month_of(m.start_date)
+    if joined != cohort_month(month, cfg):
+        return
+    b["targets"] += 1
+    nth = m.nth_paid_date(cfg.continuation_payments)
+    if nth and nth <= as_of:
+        b["continued"] += 1
+        details.append(dict(month=month, employee=m.employee, name=m.name, scheduled=joined,
+                            result="継続", date=nth.isoformat()))
+    elif m.withdrawn_before(cfg.continuation_payments):
+        b["withdrawn"] += 1
+        details.append(dict(month=month, employee=m.employee, name=m.name, scheduled=joined,
+                            result="退会", date=m.end_date.isoformat()))
+    else:
+        b["undecided"] += 1
+        reason, last_err = _pending_reason(m, cfg, as_of)
+        if last_err or m.status in ("PAUSED", "DEACTIVATED") or m.on_break:
+            b["pending"] += 1
+            pending.append(PendingMember(month, m.employee, m.name, reason, m.paid_count(as_of),
+                                         last_err, m.customer_ids))
+            result = "保留：" + reason
+        else:
+            result = "未確定"
+        details.append(dict(month=month, employee=m.employee, name=m.name, scheduled=joined,
+                            result=result, date=""))
+
+
 def compute_month(memberships: list[Membership], month: str, cfg, as_of: date) -> MonthResult:
     """対象月 month を as_of 時点のデータで集計する。
 
@@ -110,6 +145,9 @@ def compute_month(memberships: list[Membership], month: str, cfg, as_of: date) -
             bucket(m.employee)["headcount"] += 1
 
         if m.start_date is None or m.start_date > cutoff:
+            continue
+        if cfg.judgement_basis == "cohort":
+            _cohort_member(m, month, cfg, as_of, bucket(m.employee), pending, details)
             continue
         sched, kind, when = judgement_month(m, cfg, as_of)
         if sched > month:

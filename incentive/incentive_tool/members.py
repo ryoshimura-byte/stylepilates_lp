@@ -125,6 +125,19 @@ class Membership:
             return self.end_date <= self.start_date
         return self.end_date <= self.next_anchor_after(paid[-1])
 
+    def withdrawn_before(self, required: int) -> bool:
+        """契約終了日（解約予定を含む）までに決済が required 回に届かないか。"""
+        end = self.end_date
+        if end is None:
+            return False
+        paid = [p for p in self.paid_dates() if p < end]
+        n = len(paid)
+        d = self.next_anchor_after(paid[-1]) if paid else self.start_date
+        while n < required and d < end:
+            n += 1
+            d = self.next_anchor_after(d)
+        return n < required
+
     def next_anchor_after(self, d: date) -> date:
         """d より後の最初の請求基準日。"""
         cand = _anchor_date(d.year, d.month, self.anchor_day)
@@ -191,6 +204,48 @@ class Override:
     note: str = ""
     keep_member: bool = False  # Square 上は解約でも退会扱いしない（登録し直し予定など）
     external_active: bool = False  # Square にサブスクがなく、Airペイなど Square 外で在籍中
+
+
+def load_planned_cancellations(path) -> dict[str, date]:
+    """退会届から作った退会予定（列：会員名, 退会希望日）。同じ人は最後の行を採用する。"""
+    import csv
+
+    from .names import normalize
+    out: dict[str, date] = {}
+    if not path or not path.exists():
+        return out
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        for r in csv.DictReader(f):
+            name, d = (r.get("会員名") or "").strip(), (r.get("退会希望日") or "").strip()
+            if name and d:
+                out[normalize(name)] = date.fromisoformat(d.replace("/", "-")[:10])
+    return out
+
+
+def apply_planned_cancellations(memberships: list["Membership"], planned: dict[str, date],
+                                as_of: date, aliases: dict[str, str] | None = None) -> list[str]:
+    """Square にまだ解約が登録されていない退会予定を、契約終了日として反映する。照合できなかった名前を返す。
+
+    aliases は 表記ゆれ表（normalize(別名) → normalize(担当表の会員名)）。
+    """
+    from .names import normalize
+    original = dict(planned)
+    planned = {(aliases or {}).get(k, k): d for k, d in planned.items()}
+    back = {(aliases or {}).get(k, k): k for k in original}
+    used = set()
+    for m in memberships:
+        key = normalize(m.name)
+        d = planned.get(key) or planned.get(normalize("".join(reversed(m.name.split()))))
+        if d is None:
+            continue
+        used.add(key)
+        if m.end_date is not None and m.end_date <= d:
+            continue  # Square で既に解約済み（同じ日か、それより前）
+        if m.end_date is None and not (m.is_live_now() or m.status == "PENDING"):
+            continue
+        m.end_date = d
+    rev = {normalize("".join(reversed(m.name.split()))) for m in memberships}
+    return [back[k] for k in planned if k not in used and k not in rev]
 
 
 def load_overrides(path) -> dict[str, Override]:

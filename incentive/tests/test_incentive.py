@@ -104,7 +104,7 @@ class NameTests(unittest.TestCase):
 
 class LogicTests(unittest.TestCase):
     def setUp(self):
-        self.cfg = cfg_with(employees=["CHINA", "TOMOKA", "AMI", "MIZUKI", "RIHO"])
+        self.cfg = cfg_with(employees=["CHINA", "TOMOKA", "AMI", "MIZUKI", "RIHO"], judgement_basis="scheduled")
         self.f = Fixture()
         self.rows = []
 
@@ -288,6 +288,62 @@ class LogicTests(unittest.TestCase):
         self.assertEqual(rows["CHINA"].expected_points, 5.0)
         self.assertEqual(half_of("2026-03")[1:], ("2025-10", "2026-03"))
         self.assertEqual(half_of("2026-04")[1:], ("2026-04", "2026-09"))
+
+
+class CohortTests(unittest.TestCase):
+    """入会月で区切る判定（既定）。"""
+
+    def setUp(self):
+        self.cfg = cfg_with(employees=["CHINA", "TOMOKA", "AMI", "MIZUKI", "RIHO"])
+        self.f = Fixture()
+        self.rows = []
+
+    def assign(self, emp, family, given):
+        cid = self.f.customer(family, given)
+        self.rows.append(Assignment(emp, f"{family} {given}"))
+        return cid
+
+    def build(self):
+        return build_memberships(self.f.data(), Assignments(self.rows, loaded=True), self.cfg)
+
+    def test_cohort_counts_join_month_three_months_before(self):
+        a = self.assign("CHINA", "継続", "一")
+        b = self.assign("CHINA", "退会", "二")
+        c = self.assign("CHINA", "休会", "三")
+        d = self.assign("CHINA", "別月", "四")
+        self.f.sub(a, "2026-08-10", paid=monthly_paid("2026-08-10", 4))
+        # 8月入会、決済2回で10/10に解約（4回目前の退会）
+        self.f.sub(b, "2026-08-12", status="CANCELED", canceled="2026-10-12", paid=monthly_paid("2026-08-12", 2))
+        # 8月入会、休会中（4回目がずれても入会月の組で判定。退会には数えない）
+        self.f.sub(c, "2026-08-15", status="PAUSED", paid=monthly_paid("2026-08-15", 2))
+        self.f.sub(d, "2026-07-20", paid=monthly_paid("2026-07-20", 4))
+        r = compute_month(self.build().memberships, "2026-11", self.cfg, date(2026, 12, 1))
+        x = row(r, "CHINA")
+        self.assertEqual((x.targets, x.continued, x.withdrawn, x.undecided, x.pending), (3, 1, 1, 1, 1))
+        self.assertAlmostEqual(x.rate, 1 / 3)
+
+    def test_paused_member_cancelling_later_counts_in_join_cohort(self):
+        a = self.assign("CHINA", "髙田", "様")
+        # 7月入会、9月休会、10月再開、11/9 解約予定（決済3回で終わる）
+        self.f.sub(a, "2026-07-09", status="CANCELED", canceled="2026-09-09", paid=["2026-07-12", "2026-08-09"])
+        self.f.sub(a, "2026-10-09", canceled="2026-11-09", paid=["2026-10-09"])
+        r = compute_month(self.build().memberships, "2026-10", self.cfg, date(2026, 10, 15))
+        self.assertEqual((row(r, "CHINA").targets, row(r, "CHINA").withdrawn), (1, 1))
+
+
+class PlannedCancellationTests(unittest.TestCase):
+    def test_planned_cancellation_from_form_counts_before_square(self):
+        from incentive_tool.members import apply_planned_cancellations
+        cfg = cfg_with(employees=["CHINA", "TOMOKA", "AMI", "MIZUKI", "RIHO"])
+        f = Fixture()
+        cid = f.customer("鍛治谷", "里菜")
+        f.sub(cid, "2026-08-06", paid=monthly_paid("2026-08-06", 2))
+        ms = build_memberships(f.data(), Assignments([Assignment("TOMOKA", "鍛治谷 里菜")], loaded=True), cfg).memberships
+        # 退会届は「鍜治谷」（異体字）で 11/6 退会希望
+        missing = apply_planned_cancellations(ms, {normalize("鍜治谷 里菜"): date(2026, 11, 6)}, date(2026, 10, 15))
+        self.assertEqual(missing, [])
+        r = compute_month(ms, "2026-11", cfg, date(2026, 10, 15))
+        self.assertEqual((row(r, "TOMOKA").targets, row(r, "TOMOKA").withdrawn), (1, 1))
 
 
 class EndToEndTests(unittest.TestCase):

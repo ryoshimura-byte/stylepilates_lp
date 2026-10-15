@@ -29,7 +29,9 @@ def normalize(name: str | None) -> str:
     # カタカナ → ひらがな
     s = "".join(chr(ord(c) - 0x60) if "ァ" <= c <= "ヶ" else c for c in s)
     # 異体字のよくある例
-    return s.replace("髙", "高").replace("﨑", "崎").replace("邊", "辺").replace("邉", "辺")
+    for a, b in (("髙", "高"), ("﨑", "崎"), ("邊", "辺"), ("邉", "辺"), ("崗", "岡"), ("鍜", "鍛"), ("濵", "濱")):
+        s = s.replace(a, b)
+    return s
 
 
 def customer_display_name(c: dict) -> str:

@@ -9,3 +9,4 @@ __pycache__/
 .pytest_cache/
 data/member_overrides.csv
 data/excluded_customers.csv
+data/planned_cancellations.csv

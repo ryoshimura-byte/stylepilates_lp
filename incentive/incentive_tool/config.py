@@ -34,6 +34,7 @@ class Config:
     paid_statuses: tuple = ("PAID", "PARTIALLY_REFUNDED")
     error_statuses: tuple = ("UNPAID", "FAILED", "PARTIALLY_PAID")
     plan_change_gap_days: int = 31
+    judgement_basis: str = "cohort"
     rejoin_as_pause: bool = True
     pending_lookback_months: int = 12
     zero_target_is_achieved: bool = True
@@ -77,6 +78,7 @@ def load_config(path: str | Path | None = None) -> Config:
         paid_statuses=tuple(rules.get("paid_statuses", ["PAID", "PARTIALLY_REFUNDED"])),
         error_statuses=tuple(rules.get("error_statuses", ["UNPAID", "FAILED", "PARTIALLY_PAID"])),
         plan_change_gap_days=int(rules.get("plan_change_gap_days", 31)),
+        judgement_basis=str(rules.get("judgement_basis", "cohort")),
         rejoin_as_pause=bool(rules.get("rejoin_as_pause", True)),
         pending_lookback_months=int(rules.get("pending_lookback_months", 12)),
         zero_target_is_achieved=bool(rules.get("zero_target_is_achieved", True)),
