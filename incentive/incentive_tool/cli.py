@@ -139,6 +139,7 @@ def cmd_run(args) -> int:
         if current_result is None:
             current_result = compute_month(built.memberships, current, cfg, as_of)
         store.replace_pending(current_result)
+        _write_projection(cfg, built.memberships, current, as_of, run_at)
         status = "成功（警告あり）" if collector.messages else "成功"
     except Exception as e:  # noqa: BLE001 失敗も必ずログに残す
         log.error("実行に失敗しました: %s", e)
@@ -179,6 +180,30 @@ def _write_details(cfg, result) -> None:
         for p in result.pending:
             w.writerow([result.month, p.employee, p.name, p.month, "保留：" + p.reason,
                         p.last_error_date or ""])
+
+
+def _write_projection(cfg, memberships, current: str, as_of: date, run_at: str) -> None:
+    """翌月・翌々月の見込み（退会届の退会予定を含む）を「見込み」表として出力する。"""
+    rows = [[f"見込み（{run_at} 時点。退会届の退会予定を含む。毎朝の自動更新で書き換わります）"],
+            ["判定月", "入会月", "担当社員", "担当人数（見込み）", "判定対象人数", "退会（済み＋退会届）",
+             "未確定", "見込み退会率", "見込み判定", "見込みポイント"]]
+    details = [[], ["判定月", "担当社員", "会員名", "入会月", "状況", "日付"]]
+    order = {e: i for i, e in enumerate(cfg.employees)}
+    for m in (add_months(current, 1), add_months(current, 2)):
+        result = compute_month(memberships, m, cfg, as_of)
+        for r in result.rows:
+            if r.employee in cfg.not_eligible:
+                continue
+            rows.append([m, add_months(m, -(cfg.continuation_payments - 1)), r.employee, r.headcount, r.targets,
+                         r.withdrawn, r.undecided, "-" if r.rate is None else f"{r.rate * 100:.1f}%",
+                         "達成見込み" if r.achieved else "未達見込み", r.points])
+        for x in sorted(result.details, key=lambda x: (order.get(x["employee"], 99), x["name"])):
+            if x["employee"] not in cfg.not_eligible:
+                details.append([m, x["employee"], x["name"], x["scheduled"], x["result"], x["date"] or ""])
+    out = cfg.path("output_dir")
+    out.mkdir(parents=True, exist_ok=True)
+    with (out / "5_見込み.csv").open("w", encoding="utf-8-sig", newline="") as f:
+        csv.writer(f).writerows(rows + details)
 
 
 def cmd_fetch(args) -> int:
