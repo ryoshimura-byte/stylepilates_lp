@@ -332,6 +332,34 @@ class EndToEndTests(unittest.TestCase):
             log_rows = read_csv(tmp / "out/4_更新ログ.csv")
             self.assertEqual(len(log_rows), 6)
 
+    def test_import_monthly_keeps_finalized_month_in_fresh_environment(self):
+        f = Fixture()
+        cid = f.customer("山田", "花子")
+        f.sub(cid, "2026-07-10", paid=monthly_paid("2026-07-10", 4))
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "dump").mkdir()
+            for k, v in f.data().items():
+                (tmp / "dump" / f"{k}.json").write_text(json.dumps(v, ensure_ascii=False), encoding="utf-8")
+            (tmp / "assign.csv").write_text("担当社員,会員名\nCHINA,山田 花子\n", encoding="utf-8")
+            conf = (ROOT / "config.toml").read_text(encoding="utf-8")
+            conf = conf.replace('"data/assignments.csv"', json.dumps(str(tmp / "assign.csv")))
+            conf = conf.replace('"state/incentive.db"', json.dumps(str(tmp / "state/db.sqlite")))
+            conf = conf.replace('"output"', json.dumps(str(tmp / "out")))
+            (tmp / "config.toml").write_text(conf, encoding="utf-8")
+            base = ["--config", str(tmp / "config.toml"), "run", "--from-dump", str(tmp / "dump")]
+            self.assertEqual(main(base + ["--as-of", "2026-11-02"]), 0)
+            prev = tmp / "prev.csv"
+            prev.write_bytes((tmp / "out/1_月次記録.csv").read_bytes())
+            # 新しい環境（DBなし）で、データが変わっても確定済みの10月は前回の値のまま
+            import shutil
+            shutil.rmtree(tmp / "state")
+            f.invoices[-1]["status"] = "REFUNDED"
+            (tmp / "dump/invoices.json").write_text(json.dumps(f.invoices), encoding="utf-8")
+            self.assertEqual(main(base + ["--as-of", "2026-11-03", "--import-monthly", str(prev)]), 0)
+            china_oct = next(r for r in read_csv(tmp / "out/1_月次記録.csv") if r[0] == "2026-10" and r[1] == "CHINA")
+            self.assertEqual((china_oct[4], china_oct[7]), ("1", "達成（確定）"))
+
     def test_failed_run_is_logged(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)

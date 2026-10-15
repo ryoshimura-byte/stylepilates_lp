@@ -74,6 +74,10 @@ def cmd_run(args) -> int:
     run_at = now.strftime("%Y-%m-%d %H:%M:%S")
     current = month_of(as_of)
     store = Store(cfg.path("state_db"))
+    if getattr(args, "import_monthly", None):
+        imported = store.import_finalized_csv(Path(args.import_monthly))
+        if imported:
+            log.info("確定済みの月を取り込みました: %s", ", ".join(imported))
     counts: dict = {}
     months_done: list[str] = []
     mode = f"再集計 {args.month}" if args.month else "日次更新"
@@ -221,7 +225,7 @@ def cmd_serve(args) -> int:
             nxt += timedelta(days=1)
         print(f"次回実行: {nxt:%Y-%m-%d %H:%M} ({cfg.timezone})", flush=True)
         time.sleep(max(1.0, (nxt - datetime.now(tz)).total_seconds()))
-        cmd_run(argparse.Namespace(config=args.config, month=None, from_dump=None, as_of=None))
+        cmd_run(argparse.Namespace(config=args.config, month=None, from_dump=None, as_of=None, import_monthly=None))
 
 
 def main(argv=None) -> int:
@@ -233,6 +237,7 @@ def main(argv=None) -> int:
     r.add_argument("--month", type=_valid_month, help="再集計する年月（YYYY-MM）。確定済みでも上書きします")
     r.add_argument("--from-dump", help="Square API の代わりに保存済みJSONを使う")
     r.add_argument("--as-of", help="基準日（YYYY-MM-DD、テスト用。既定は今日）")
+    r.add_argument("--import-monthly", help="以前の「月次記録」CSV。確定済みの月を取り込み、上書きしない")
     r.set_defaults(func=cmd_run)
 
     f = sub.add_parser("fetch", help="Square のデータを取得してJSONに保存する")

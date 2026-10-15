@@ -66,6 +66,34 @@ class Store:
                  for r in result.rows])
         return True
 
+    def import_finalized_csv(self, path: Path) -> list[str]:
+        """以前に出力した「月次記録」CSV から確定済みの月を取り込む（毎回新しい環境で動かす場合用）。"""
+        import csv
+
+        def num(v, cast=float):
+            v = (v or "").replace("%", "").replace(",", "").strip()
+            if v in ("", "-"):
+                return None
+            return cast(v)
+
+        months: dict[str, list] = {}
+        with path.open(encoding="utf-8-sig", newline="") as f:
+            for r in csv.DictReader(f):
+                if "（確定）" not in (r.get("判定（確定／途中経過）") or ""):
+                    continue
+                rate = num(r.get("退会率"))
+                months.setdefault(r["月"], []).append((
+                    r["月"], r["担当社員"], num(r["担当人数"], int), num(r["判定対象人数"], int),
+                    num(r["継続人数"], int), num(r["退会人数"], int),
+                    num(r.get("保留人数（持ち越し）"), int) or 0, num(r.get("未確定人数（当月）"), int) or 0,
+                    rate / 100 if rate is not None else None, r["判定（確定／途中経過）"], "確定", 1,
+                    num(r.get("ポイント")), r.get("更新日時", "")))
+        with self.db:
+            for m, rows in months.items():
+                self.db.execute("DELETE FROM monthly WHERE month=?", (m,))
+                self.db.executemany("INSERT INTO monthly VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+        return sorted(months)
+
     def monthly_records(self) -> list[dict]:
         return [dict(r) for r in self.db.execute("SELECT * FROM monthly ORDER BY month DESC, employee")]
 
